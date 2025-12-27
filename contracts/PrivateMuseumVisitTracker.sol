@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 
 import { FHE, euint32, euint8, ebool } from "@fhevm/solidity/lib/FHE.sol";
 import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 
+/// @title PrivateMuseumVisitTracker
+/// @notice A confidential cultural consumption data system using Fully Homomorphic Encryption
+/// @dev Enables privacy-preserving visitor analytics for museums and cultural institutions
 contract PrivateMuseumVisitTracker is SepoliaConfig {
 
     address public owner;
@@ -11,52 +14,58 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
     uint32 public totalExhibitions;
     uint32 public totalRegisteredVisitors;
 
-    // 访客年龄组 (保护隐私)
+    /// @notice Age group categories for visitor classification (privacy-protected)
     enum AgeGroup { Child, Teen, Adult, Senior }
 
-    // 展览类型
+    /// @notice Types of exhibitions supported by the system
     enum ExhibitionType { History, Art, Science, Culture, Technology, Nature }
 
+    /// @notice Exhibition information structure
+    /// @dev Stores both public and encrypted exhibition data
     struct Exhibition {
         string name;
         ExhibitionType exhibitionType;
         uint32 startDate;
         uint32 endDate;
         bool isActive;
-        euint32 privateVisitorCount; // 加密的访客数量
-        euint32 privateSatisfactionSum; // 加密的满意度总分
-        uint32 publicVisitorCount; // 可公开的访客数量（用于基本统计）
+        euint32 privateVisitorCount; // Encrypted visitor count
+        euint32 privateSatisfactionSum; // Encrypted satisfaction total
+        uint32 publicVisitorCount; // Public visitor count for basic statistics
     }
 
+    /// @notice Visitor profile structure
+    /// @dev Stores encrypted visitor information for privacy preservation
     struct VisitorProfile {
         bool isRegistered;
-        euint8 encryptedAge; // 加密年龄
-        euint8 encryptedAgeGroup; // 加密年龄组
+        euint8 encryptedAge; // Encrypted age
+        euint8 encryptedAgeGroup; // Encrypted age group
         euint32 totalVisits;
         uint32 registrationDate;
     }
 
+    /// @notice Private visit record structure
+    /// @dev Records encrypted visit details and feedback
     struct PrivateVisitRecord {
         uint32 exhibitionId;
         euint32 encryptedTimestamp;
-        euint8 encryptedSatisfaction; // 1-10 评分
-        euint32 encryptedDuration; // 参观时长(分钟)
-        euint8 encryptedInterestLevel; // 兴趣度 1-5
+        euint8 encryptedSatisfaction; // Rating 1-10
+        euint32 encryptedDuration; // Visit duration in minutes
+        euint8 encryptedInterestLevel; // Interest level 1-5
         bool isRecorded;
     }
 
-    // 映射
+    /// @notice Mappings for storing exhibitions and visitor data
     mapping(uint32 => Exhibition) public exhibitions;
     mapping(address => VisitorProfile) public visitorProfiles;
     mapping(address => mapping(uint32 => PrivateVisitRecord)) public visitRecords;
     mapping(uint32 => address[]) public exhibitionVisitors;
 
-    // 统计数据 (加密)
+    /// @notice Encrypted statistics mappings
     mapping(ExhibitionType => euint32) public typeVisitorCounts;
-    mapping(uint32 => euint32) public dailyVisitorCounts; // 按日期统计
+    mapping(uint32 => euint32) public dailyVisitorCounts; // Daily visitor statistics
     mapping(AgeGroup => euint32) public ageGroupCounts;
 
-    // 事件
+    /// @notice Events
     event ExhibitionCreated(uint32 indexed exhibitionId, string name, ExhibitionType exhibitionType);
     event VisitorRegistered(address indexed visitor, uint32 timestamp);
     event PrivateVisitRecorded(address indexed visitor, uint32 indexed exhibitionId);
@@ -85,12 +94,17 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         totalRegisteredVisitors = 0;
     }
 
-    // 设置博物馆管理员
+    /// @notice Set the museum manager address
+    /// @param _manager Address of the new museum manager
     function setMuseumManager(address _manager) external onlyOwner {
         museumManager = _manager;
     }
 
-    // 创建展览
+    /// @notice Create a new exhibition
+    /// @param _name Exhibition name
+    /// @param _type Type of exhibition
+    /// @param _startDate Start timestamp
+    /// @param _endDate End timestamp
     function createExhibition(
         string memory _name,
         ExhibitionType _type,
@@ -112,26 +126,27 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
             publicVisitorCount: 0
         });
 
-        // 允许合约访问加密数据
+        // Allow contract to access encrypted data
         FHE.allowThis(exhibitions[totalExhibitions].privateVisitorCount);
         FHE.allowThis(exhibitions[totalExhibitions].privateSatisfactionSum);
 
         emit ExhibitionCreated(totalExhibitions, _name, _type);
     }
 
-    // 访客注册 (隐私保护)
+    /// @notice Register as a visitor with privacy-protected age
+    /// @param _age Visitor's age (will be encrypted)
     function registerVisitor(uint8 _age) external {
         require(!visitorProfiles[msg.sender].isRegistered, "Already registered");
         require(_age > 0 && _age < 120, "Invalid age");
 
-        // 确定年龄组
+        // Determine age group
         AgeGroup ageGroup;
         if (_age < 13) ageGroup = AgeGroup.Child;
         else if (_age < 20) ageGroup = AgeGroup.Teen;
         else if (_age < 60) ageGroup = AgeGroup.Adult;
         else ageGroup = AgeGroup.Senior;
 
-        // 加密敏感信息
+        // Encrypt sensitive information
         euint8 encryptedAge = FHE.asEuint8(_age);
         euint8 encryptedAgeGroup = FHE.asEuint8(uint8(ageGroup));
 
@@ -143,13 +158,13 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
             registrationDate: uint32(block.timestamp)
         });
 
-        // 更新年龄组统计 (加密)
+        // Update age group statistics (encrypted)
         ageGroupCounts[ageGroup] = FHE.add(
             ageGroupCounts[ageGroup],
             FHE.asEuint32(1)
         );
 
-        // 允许访问权限
+        // Set access permissions
         FHE.allowThis(encryptedAge);
         FHE.allowThis(encryptedAgeGroup);
         FHE.allow(encryptedAge, msg.sender);
@@ -161,7 +176,11 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         emit VisitorRegistered(msg.sender, uint32(block.timestamp));
     }
 
-    // 记录私密参观信息
+    /// @notice Record a private visit with encrypted feedback
+    /// @param _exhibitionId ID of the exhibition
+    /// @param _satisfaction Satisfaction rating 1-10
+    /// @param _duration Visit duration in minutes
+    /// @param _interestLevel Interest level 1-5
     function recordPrivateVisit(
         uint32 _exhibitionId,
         uint8 _satisfaction,
@@ -174,13 +193,13 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         require(_interestLevel >= 1 && _interestLevel <= 5, "Interest level must be 1-5");
         require(!visitRecords[msg.sender][_exhibitionId].isRecorded, "Visit already recorded");
 
-        // 加密访问数据
+        // Encrypt visit data
         euint32 encryptedTimestamp = FHE.asEuint32(uint32(block.timestamp));
         euint8 encryptedSatisfaction = FHE.asEuint8(_satisfaction);
         euint32 encryptedDuration = FHE.asEuint32(_duration);
         euint8 encryptedInterestLevel = FHE.asEuint8(_interestLevel);
 
-        // 记录访问
+        // Record visit
         visitRecords[msg.sender][_exhibitionId] = PrivateVisitRecord({
             exhibitionId: _exhibitionId,
             encryptedTimestamp: encryptedTimestamp,
@@ -190,7 +209,7 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
             isRecorded: true
         });
 
-        // 更新展览统计 (加密)
+        // Update exhibition statistics (encrypted)
         exhibitions[_exhibitionId].privateVisitorCount = FHE.add(
             exhibitions[_exhibitionId].privateVisitorCount,
             FHE.asEuint32(1)
@@ -201,32 +220,32 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
             FHE.asEuint32(uint32(_satisfaction))
         );
 
-        // 更新类型统计
+        // Update type statistics
         typeVisitorCounts[exhibitions[_exhibitionId].exhibitionType] = FHE.add(
             typeVisitorCounts[exhibitions[_exhibitionId].exhibitionType],
             FHE.asEuint32(1)
         );
 
-        // 更新访客总访问次数
+        // Update visitor total visits
         visitorProfiles[msg.sender].totalVisits = FHE.add(
             visitorProfiles[msg.sender].totalVisits,
             FHE.asEuint32(1)
         );
 
-        // 更新每日统计
-        uint32 today = uint32(block.timestamp / 86400); // 转换为天数
+        // Update daily statistics
+        uint32 today = uint32(block.timestamp / 86400); // Convert to days
         dailyVisitorCounts[today] = FHE.add(
             dailyVisitorCounts[today],
             FHE.asEuint32(1)
         );
 
-        // 添加到访客列表
+        // Add to visitor list
         exhibitionVisitors[_exhibitionId].push(msg.sender);
 
-        // 更新公开计数器
+        // Update public counter
         exhibitions[_exhibitionId].publicVisitorCount++;
 
-        // 设置访问权限
+        // Set access permissions
         FHE.allowThis(encryptedTimestamp);
         FHE.allowThis(encryptedSatisfaction);
         FHE.allowThis(encryptedDuration);
@@ -238,7 +257,14 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         emit SatisfactionRecorded(_exhibitionId, msg.sender);
     }
 
-    // 获取展览基本信息 (不泄露敏感统计)
+    /// @notice Get basic exhibition information (does not expose sensitive statistics)
+    /// @param _exhibitionId ID of the exhibition
+    /// @return name Exhibition name
+    /// @return exhibitionType Type of exhibition
+    /// @return startDate Start timestamp
+    /// @return endDate End timestamp
+    /// @return isActive Whether exhibition is active
+    /// @return publicVisitorCount Public visitor count
     function getExhibitionInfo(uint32 _exhibitionId) external view returns (
         string memory name,
         ExhibitionType exhibitionType,
@@ -260,12 +286,16 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         );
     }
 
-    // 获取访客自己的参观记录
+    /// @notice Check if visitor has visited a specific exhibition
+    /// @param _exhibitionId ID of the exhibition
+    /// @return hasVisited Whether the visitor has visited
     function getMyVisitRecord(uint32 _exhibitionId) external view returns (bool hasVisited) {
         return visitRecords[msg.sender][_exhibitionId].isRecorded;
     }
 
-    // 获取访客自己的统计信息
+    /// @notice Get visitor's own statistics
+    /// @return isRegistered Whether visitor is registered
+    /// @return registrationDate Registration timestamp
     function getMyStats() external view returns (
         bool isRegistered,
         uint32 registrationDate
@@ -276,11 +306,12 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         );
     }
 
-    // 博物馆管理员请求加密统计 (需要解密)
+    /// @notice Museum manager requests encrypted statistics (requires decryption)
+    /// @param _exhibitionId ID of the exhibition
     function requestExhibitionStats(uint32 _exhibitionId) external onlyMuseumManager {
         require(_exhibitionId > 0 && _exhibitionId <= totalExhibitions, "Invalid exhibition");
 
-        // 请求解密访客数量和满意度
+        // Request decryption of visitor count and satisfaction
         bytes32[] memory cts = new bytes32[](2);
         cts[0] = FHE.toBytes32(exhibitions[_exhibitionId].privateVisitorCount);
         cts[1] = FHE.toBytes32(exhibitions[_exhibitionId].privateSatisfactionSum);
@@ -289,24 +320,30 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         emit StatisticsRequested(_exhibitionId, msg.sender);
     }
 
-    // 处理统计解密结果
+    /// @notice Process decrypted statistics result
+    /// @param requestId Request ID
+    /// @param visitorCount Decrypted visitor count
+    /// @param satisfactionSum Decrypted satisfaction sum
     function processStatsReveal(
         uint256 requestId,
         uint32 visitorCount,
         uint32 satisfactionSum
     ) external {
-        // 简化版本，移除签名验证以避免参数错误
-        // 这里可以处理解密后的统计数据
-        // 实际应用中，这些数据可能被用于生成报告或分析
+        // Simplified version, signature verification removed to avoid parameter errors
+        // In production, this data could be used for reports or analysis
     }
 
-    // 设置展览状态
+    /// @notice Set exhibition active status
+    /// @param _exhibitionId ID of the exhibition
+    /// @param _isActive New active status
     function setExhibitionStatus(uint32 _exhibitionId, bool _isActive) external onlyMuseumManager {
         require(_exhibitionId > 0 && _exhibitionId <= totalExhibitions, "Invalid exhibition");
         exhibitions[_exhibitionId].isActive = _isActive;
     }
 
-    // 获取总体公开统计
+    /// @notice Get overall public statistics
+    /// @return totalExhibitionsCount Total number of exhibitions
+    /// @return totalRegisteredVisitorsCount Total registered visitors
     function getPublicStats() external view returns (
         uint32 totalExhibitionsCount,
         uint32 totalRegisteredVisitorsCount
@@ -314,7 +351,9 @@ contract PrivateMuseumVisitTracker is SepoliaConfig {
         return (totalExhibitions, totalRegisteredVisitors);
     }
 
-    // 获取展览访客列表长度 (不泄露具体访客信息)
+    /// @notice Get exhibition visitor list length (does not expose specific visitor information)
+    /// @param _exhibitionId ID of the exhibition
+    /// @return Visitor count
     function getExhibitionVisitorCount(uint32 _exhibitionId) external view returns (uint32) {
         require(_exhibitionId > 0 && _exhibitionId <= totalExhibitions, "Invalid exhibition");
         return uint32(exhibitionVisitors[_exhibitionId].length);
